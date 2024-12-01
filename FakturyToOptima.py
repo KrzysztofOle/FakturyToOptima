@@ -9,6 +9,9 @@ import os
 import pdfplumber
 import openai
 from pydantic import BaseModel
+import re
+from datetime import datetime
+
 
 # Załaduj zmienne środowiskowe z pliku .env
 load_dotenv()
@@ -21,6 +24,15 @@ DOWNLOAD_FOLDER = "./attachments"
 
 # Ustawienie folderu zapisu
 os.makedirs(DOWNLOAD_FOLDER, exist_ok=True)
+
+class Invoice(BaseModel):
+    invoice_date: str
+    company_name_from: str
+    company_name_to: str
+    invoice_number: str
+
+    def format_date(self):
+        self.invoice_date = datetime.strptime(self.invoice_date, "%Y-%m-%d")
 
 
 def save_attachment(msg, folder):
@@ -58,6 +70,8 @@ def fetch_unread_with_attachment():
             # Zapisz załączniki
             yield save_attachment(email_msg, DOWNLOAD_FOLDER)
 
+def clean_text(text):
+    return re.sub(r"[^\x20-\x7E\t\n\r]+", "", text)
 
 def extract_from_pdf(sciezka_pdf):
     # Wczytanie pliku PDF
@@ -65,7 +79,10 @@ def extract_from_pdf(sciezka_pdf):
         text = ""
         for i, page in enumerate(pdf.pages):
             text += page.extract_text()
-    return text
+    return clean_text(text)
+
+
+client = openai.OpenAI()
 
 
 for filename in fetch_unread_with_attachment():
@@ -73,3 +90,19 @@ for filename in fetch_unread_with_attachment():
     zawartosc = extract_from_pdf(filename)
     print(f'zawartość:\n {zawartosc}')
     print('\n\n==============================================')
+
+    response = client.beta.chat.completions.parse(
+        model='gpt-4o-mini',
+        messages= [
+            {'role': 'system', 'content': 'Prosze wyciągnij dane z faktur. '
+                                          'Musze poznać date, nazwe firmy która wystawiła fakturę, '
+                                          'nazwe firmy na jaką została wystawiona faktura oraz numer faktury.'
+                                          'Daty formatuj jako YYYY-MM-DD'
+            },
+            {'role': 'user', 'content': zawartosc}
+        ],
+        response_format=Invoice
+    )
+    invoice = response.choices[0].message.parsed
+    invoice.format_date()
+    print(invoice)
