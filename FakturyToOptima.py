@@ -12,6 +12,12 @@ from pydantic import BaseModel
 import re
 from datetime import datetime
 
+# ocr
+import fitz  # PyMuPDF
+import pytesseract
+from PIL import Image
+import io
+
 
 # Załaduj zmienne środowiskowe z pliku .env
 load_dotenv()
@@ -30,9 +36,37 @@ class Invoice(BaseModel):
     company_name_from: str
     company_name_to: str
     invoice_number: str
+    buyers_tax_identification_number: str
 
     def format_date(self):
         self.invoice_date = datetime.strptime(self.invoice_date, "%Y-%m-%d")
+
+
+# Funkcja do odczytywania tekstu ze skanów faktur w PDF
+def odczytaj_fakture_ocr(pdf_path):
+    wszystkie_teksty = []
+
+    # Otwórz plik PDF
+    with fitz.open(pdf_path) as pdf:
+        for page_num, page in enumerate(pdf, start=1):
+            # Ekstrakcja obrazów z każdej strony PDF
+            for img_index, img in enumerate(page.get_images(full=True)):
+                xref = img[0]
+                base_image = pdf.extract_image(xref)
+                image_bytes = base_image["image"]
+
+                # Przetwórz obraz za pomocą PIL
+                image = Image.open(io.BytesIO(image_bytes))
+
+                # OCR na obrazie (ustaw język polski)
+                tekst = pytesseract.image_to_string(image, lang="pol")
+
+                wszystkie_teksty.append((page_num, img_index, tekst))
+
+    result = ''
+    for strona, obraz, tekst in wszystkie_teksty:
+        result += tekst
+    return result
 
 
 def save_attachment(msg, folder):
@@ -71,7 +105,17 @@ def fetch_unread_with_attachment():
             yield save_attachment(email_msg, DOWNLOAD_FOLDER)
 
 def clean_text(text):
-    return re.sub(r"[^\x20-\x7E\t\n\r]+", "", text)
+    # Zachowuje polskie znaki, litery łacińskie, cyfry i podstawowe znaki interpunkcyjne
+    return re.sub(r"[^\w\sąćęłńóśźżĄĆĘŁŃÓŚŹŻ.,;:!?\-\"\'\(\)\[\]\/]+", "", text)
+
+def czy_pdf_zawiera_tekst(pdf_path):
+    with pdfplumber.open(pdf_path) as pdf:
+        for page in pdf.pages:
+            tekst = page.extract_text()  # Pobiera tekst z warstwy tekstowej
+            if tekst and tekst.strip():  # Sprawdza, czy tekst istnieje i nie jest pusty
+                return True
+    return False
+
 
 def extract_from_pdf(sciezka_pdf):
     # Wczytanie pliku PDF
@@ -82,21 +126,37 @@ def extract_from_pdf(sciezka_pdf):
     return clean_text(text)
 
 
+lista_faktur = []
+
 client = openai.OpenAI()
 
 
 for filename in fetch_unread_with_attachment():
-    print(f'do przetworzenia: {filename}')
-    zawartosc = extract_from_pdf(filename)
-    print(f'zawartość:\n {zawartosc}')
     print('\n\n==============================================')
+    # print(f'do przetworzenia: {filename}')
+    zawartosc = ''
+    try:
+        zawartosc = extract_from_pdf(filename)
+    except Exception as e:
+        print(e)
+
+    try:
+        if zawartosc == '' or len(zawartosc)<10:
+            zawartosc = odczytaj_fakture_ocr(filename)
+        # print(f'zawartość:\n {zawartosc}')
+    except Exception as e:
+        print(e)
+
+    if zawartosc == '':
+        continue
 
     response = client.beta.chat.completions.parse(
         model='gpt-4o-mini',
         messages= [
             {'role': 'system', 'content': 'Prosze wyciągnij dane z faktur. '
                                           'Musze poznać date, nazwe firmy która wystawiła fakturę, '
-                                          'nazwe firmy na jaką została wystawiona faktura oraz numer faktury.'
+                                          'nazwe firmy na jaką została wystawiona faktura oraz numer faktury, '
+                                          'oraz nip nabywcy'
                                           'Daty formatuj jako YYYY-MM-DD'
             },
             {'role': 'user', 'content': zawartosc}
@@ -106,3 +166,8 @@ for filename in fetch_unread_with_attachment():
     invoice = response.choices[0].message.parsed
     invoice.format_date()
     print(invoice)
+    lista_faktur.append(invoice)
+print('==============================================\n\n')
+print('\n\n\n\n')
+for ff in lista_faktur:
+    print(ff)
