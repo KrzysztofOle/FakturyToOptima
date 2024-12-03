@@ -34,7 +34,7 @@ def odczytaj_fakture(pdf_path):
 
 
 # Przykład użycia
-sciezka_pdf = "attachments/PKP SZYBKA KOLEJ  F.28.522.11.2024  108,00.PDF"
+sciezka_pdf = "attachments/GD.ZARZAD DRÓG I ZIELENI  15673  13,00.PDF"
 odczytane_dane = odczytaj_fakture(sciezka_pdf)
 
 print(odczytane_dane)

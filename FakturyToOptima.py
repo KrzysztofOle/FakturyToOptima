@@ -38,6 +38,17 @@ class Invoice(BaseModel):
     invoice_number: str
     buyers_tax_identification_number: str
 
+    # Typ dokumentu
+    # NIP wystawiającego dokument
+    # Numer dokumentu
+    # Data wystawienia dokumentu
+    # Data sprzedaży
+    # Nip odbiorcy dokumentu
+    # Wartość netto
+    # stawki vat: 23%, 8%, 5%, 0% i zw
+    # Stawka Vat
+    # Kwoty Vat
+
     def format_date(self):
         self.invoice_date = datetime.strptime(self.invoice_date, "%Y-%m-%d")
 
