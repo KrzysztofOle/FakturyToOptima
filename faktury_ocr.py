@@ -4,11 +4,12 @@ import fitz  # PyMuPDF
 import pytesseract
 from PIL import Image
 import io
-
+from pathlib import Path
 
 # Funkcja do odczytywania tekstu ze skanów faktur w PDF
-def odczytaj_fakture(pdf_path):
+def odczytaj_fakture(pdf_path: Path):
     wszystkie_teksty = []
+    teksty = []
 
     # Otwórz plik PDF
     with fitz.open(pdf_path) as pdf:
@@ -24,8 +25,13 @@ def odczytaj_fakture(pdf_path):
 
                 # OCR na obrazie (ustaw język polski)
                 tekst = pytesseract.image_to_string(image, lang="pol")
-
-                wszystkie_teksty.append((page_num, img_index, tekst))
+                if tekst.strip():
+                    wszystkie_teksty.append((page_num, img_index, tekst))
+                
+            txt = page.get_text("text")
+            if txt.strip():
+                    wszystkie_teksty.append((page_num, -1, txt))
+            
 
     result = ''
     for strona, obraz, tekst in wszystkie_teksty:
@@ -33,8 +39,29 @@ def odczytaj_fakture(pdf_path):
     return result
 
 
-# Przykład użycia
-sciezka_pdf = "attachments/GD.ZARZAD DRÓG I ZIELENI  15673  13,00.PDF"
-odczytane_dane = odczytaj_fakture(sciezka_pdf)
+if __name__ == "__main__":
+    folder = Path("attachments")
+    pliki = [p for p in folder.iterdir() if p.is_file()]
+    
+    for plik in pliki:
+        if plik.suffix.lower() == '.pdf':
+            print("\n\n")
+            print("-" * 40)
+            print("-" * 40)
+            print("\n")
+            print(f"Odczytuję fakturę: {plik.name}")
+            if not plik.exists() or not plik.is_file() or plik.stat().st_size == 0:
+                print(f"Plik {plik.name} nie istnieje lub pusty.")
+                continue
+            # Odczytaj tekst z faktury
+            tekst_faktury = odczytaj_fakture(plik)
+            print(f"Tekst z faktury {plik.name}:\n{tekst_faktury}\n\n\n")
+    
 
-print(odczytane_dane)
+    # # Przykład użycia
+    # sciezka_pdf = Path("attachments/GD.ZARZAD DRÓG I ZIELENI  15673  13,00.PDF")
+    # odczytane_dane = odczytaj_fakture(sciezka_pdf)
+
+    # print(odczytane_dane)
+
+

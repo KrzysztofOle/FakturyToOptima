@@ -1,0 +1,3 @@
+message_id,nazwa_zalacznika,numer_faktury,data_wystawienia_faktury
+<12345abc@example.com>,faktura_123.pdf,FV123/2024,2024-12-03
+<67890def@example.com>,faktura_124.pdf,FV124/2024,2024-12-04
